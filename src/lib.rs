@@ -1,5 +1,5 @@
 //! EXPERIMENTAL implementation of BLAKE2s
-
+#![feature(stdsimd)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
 #[cfg(feature = "std")]
@@ -10,6 +10,7 @@ extern crate arrayref;
 extern crate arrayvec;
 extern crate byteorder;
 extern crate constant_time_eq;
+extern crate core_arch;
 
 use byteorder::{ByteOrder, LittleEndian};
 use core::cmp;
@@ -17,6 +18,8 @@ use core::fmt;
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 mod avx2;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+mod avx512;
 mod portable;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 mod sse41;
@@ -103,9 +106,13 @@ type Compress8Fn = unsafe fn(
     lastnode6: u32,
     lastnode7: u32,
 );
-type Hash4ExactFn =
-    unsafe fn(params: &Params, input0: &[u8], input1: &[u8], input2: &[u8], input3: &[u8])
-        -> [Hash; 4];
+type Hash4ExactFn = unsafe fn(
+    params: &Params,
+    input0: &[u8],
+    input1: &[u8],
+    input2: &[u8],
+    input3: &[u8],
+) -> [Hash; 4];
 type Hash8ExactFn = unsafe fn(
     params: &Params,
     input0: &[u8],
