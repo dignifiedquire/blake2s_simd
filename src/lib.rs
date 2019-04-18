@@ -1,5 +1,5 @@
 //! EXPERIMENTAL implementation of BLAKE2s
-#![feature(stdsimd)]
+#![feature(stdsimd, avx512_target_feature)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
 #[cfg(feature = "std")]
@@ -1080,6 +1080,9 @@ pub mod benchmarks {
     pub use crate::avx2::compress8_transposed_all as compress8_transposed_all_avx2;
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     pub use crate::avx2::compress8_vectorized as compress8_vectorized_avx2;
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub use crate::avx512::compress16_transposed_all as compress16_transposed_all_avx512;
 
     // Safety: The portable implementation should be safe to call on any platform.
     pub fn force_portable(state: &mut crate::State) {

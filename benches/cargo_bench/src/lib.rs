@@ -154,6 +154,34 @@ fn bench_blake2s_avx2_compress8_transposed_all(b: &mut Bencher) {
 }
 
 #[bench]
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+fn bench_blake2s_avx512_compress16_transposed_all(b: &mut Bencher) {
+    if !is_x86_feature_detected!("avx512f") {
+        return;
+    }
+    b.bytes = BLOCK.len() as u64 * 16;
+    unsafe {
+        let mut h_vecs = mem::transmute([1u8; 64 * 8]);
+        let msg_vecs = mem::transmute([2u8; 64 * 16]);
+        let count_low = mem::transmute([3u8; 64]);
+        let count_high = mem::transmute([4u8; 64]);
+        let lastblock = mem::transmute([5u8; 64]);
+        let lastnode = mem::transmute([6u8; 64]);
+        b.iter(|| {
+            benchmarks::compress16_transposed_all_avx512(
+                &mut h_vecs,
+                &msg_vecs,
+                count_low,
+                count_high,
+                lastblock,
+                lastnode,
+            );
+            test::black_box(&mut h_vecs);
+        });
+    }
+}
+
+#[bench]
 fn bench_blake2s_portable_compress(b: &mut Bencher) {
     b.bytes = BLOCK.len() as u64;
     let mut h = [0; 8];
