@@ -3,7 +3,9 @@ use core_arch::x86::*;
 #[cfg(target_arch = "x86_64")]
 use core_arch::x86_64::*;
 
+use byteorder::{ByteOrder, LittleEndian};
 use core::mem;
+use packed_simd::{i32x4, FromBits, IntoBits};
 
 use crate::AlignedWords8;
 use crate::Block;
@@ -17,6 +19,11 @@ use crate::SIGMA;
 #[inline(always)]
 unsafe fn loadu(p: *const u32) -> __m512i {
     _mm512_loadu_si512(p as *const __m512i)
+}
+
+#[inline(always)]
+unsafe fn loadu128(x0: u32, x1: u32, x2: u32, x3: u32) -> __m128i {
+    _mm_set_epi32(x0 as i32, x1 as i32, x2 as i32, x3 as i32)
 }
 
 #[inline(always)]
@@ -106,6 +113,214 @@ macro_rules! g {
         $v[$b] = xor($v[$b], $v[$c]);
         $v[$b] = rotr7($v[$b]);
     };
+}
+
+pub unsafe fn compress(h: &mut StateWords, msg: &Block, count: u64, lastblock: u32, lastnode: u32) {
+    // Initialize the compression state.
+    let mut v = [
+        h[0],
+        h[1],
+        h[2],
+        h[3],
+        h[4],
+        h[5],
+        h[6],
+        h[7],
+        IV[0],
+        IV[1],
+        IV[2],
+        IV[3],
+        IV[4] ^ count as u32,
+        IV[5] ^ (count >> 32) as u32,
+        IV[6] ^ lastblock,
+        IV[7] ^ lastnode,
+    ];
+
+    // Parse the message bytes as ints in little endian order.
+    let msg_refs = array_refs!(msg, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4);
+    let m = [
+        LittleEndian::read_u32(msg_refs.0),
+        LittleEndian::read_u32(msg_refs.1),
+        LittleEndian::read_u32(msg_refs.2),
+        LittleEndian::read_u32(msg_refs.3),
+        LittleEndian::read_u32(msg_refs.4),
+        LittleEndian::read_u32(msg_refs.5),
+        LittleEndian::read_u32(msg_refs.6),
+        LittleEndian::read_u32(msg_refs.7),
+        LittleEndian::read_u32(msg_refs.8),
+        LittleEndian::read_u32(msg_refs.9),
+        LittleEndian::read_u32(msg_refs.10),
+        LittleEndian::read_u32(msg_refs.11),
+        LittleEndian::read_u32(msg_refs.12),
+        LittleEndian::read_u32(msg_refs.13),
+        LittleEndian::read_u32(msg_refs.14),
+        LittleEndian::read_u32(msg_refs.15),
+    ];
+
+    let v_old = v.clone();
+    round(0, &m, &mut v);
+    round(1, &m, &mut v);
+    round(2, &m, &mut v);
+    round(3, &m, &mut v);
+    round(4, &m, &mut v);
+    round(5, &m, &mut v);
+    round(6, &m, &mut v);
+    round(7, &m, &mut v);
+    round(8, &m, &mut v);
+    round(9, &m, &mut v);
+
+    assert_ne!(v_old, v);
+
+    h[0] ^= v[0] ^ v[8];
+    h[1] ^= v[1] ^ v[9];
+    h[2] ^= v[2] ^ v[10];
+    h[3] ^= v[3] ^ v[11];
+    h[4] ^= v[4] ^ v[12];
+    h[5] ^= v[5] ^ v[13];
+    h[6] ^= v[6] ^ v[14];
+    h[7] ^= v[7] ^ v[15];
+}
+
+// Single blake2s round
+#[inline(always)]
+unsafe fn round(r: usize, m: &[u32; 16], v: &mut [u32; 16]) {
+    // this can replace round in portable.rs
+    // Idea, use mm128i to do 4 operations at a time
+
+    let mut v0123 = loadu128(v[0], v[1], v[2], v[3]);
+    let mut v4567 = loadu128(v[4], v[5], v[6], v[7]);
+    let mut v891011 = loadu128(v[8], v[9], v[10], v[11]);
+    let mut v12131415 = loadu128(v[12], v[13], v[14], v[15]);
+
+    let ms0246 = loadu128(
+        m[SIGMA[r][0] as usize],
+        m[SIGMA[r][2] as usize],
+        m[SIGMA[r][4] as usize],
+        m[SIGMA[r][6] as usize],
+    );
+    let ms1357 = loadu128(
+        m[SIGMA[r][1] as usize],
+        m[SIGMA[r][3] as usize],
+        m[SIGMA[r][5] as usize],
+        m[SIGMA[r][7] as usize],
+    );
+    let ms8101214 = loadu128(
+        m[SIGMA[r][8] as usize],
+        m[SIGMA[r][10] as usize],
+        m[SIGMA[r][12] as usize],
+        m[SIGMA[r][14] as usize],
+    );
+    let ms9111315 = loadu128(
+        m[SIGMA[r][9] as usize],
+        m[SIGMA[r][11] as usize],
+        m[SIGMA[r][13] as usize],
+        m[SIGMA[r][15] as usize],
+    );
+
+    // Mix columns
+
+    // add
+    v0123 = _mm_add_epi32(v0123, ms0246);
+
+    // add
+    v0123 = _mm_add_epi32(v0123, v4567);
+
+    // xor
+    v12131415 = _mm_xor_si128(v12131415, v0123);
+
+    // ror16
+    v12131415 = _mm_ror_epi32(v12131415, 16);
+
+    // add
+    v891011 = _mm_add_epi32(v891011, v12131415);
+
+    // add
+    v4567 = _mm_xor_si128(v4567, v891011);
+
+    // ror12
+    v4567 = _mm_ror_epi32(v4567, 12);
+
+    // add
+    v0123 = _mm_add_epi32(v0123, ms1357);
+
+    // add
+    v0123 = _mm_add_epi32(v0123, v4567);
+
+    // xor
+    v12131415 = _mm_xor_si128(v12131415, v0123);
+
+    // ror8
+    v12131415 = _mm_ror_epi32(v12131415, 8);
+
+    // add
+    v891011 = _mm_add_epi32(v891011, v12131415);
+
+    // xor
+    v4567 = _mm_xor_si128(v4567, v891011);
+
+    // ror7
+    v4567 = _mm_ror_epi32(v4567, 7);
+
+    // Mix rows
+    // FIXME: correct shuffle masks
+    let mut v5674 = _mm_shuffle_epi32(v4567, 0b0010_0001_0000_0011);
+    let mut v15121314 = _mm_shuffle_epi32(v12131415, 0b0010_0001_0000_0011);
+    let mut v101189 = _mm_shuffle_epi32(v891011, 0b0010_0001_0000_0011);
+
+    // add
+    v0123 = _mm_add_epi32(v0123, ms8101214);
+
+    // add
+    v0123 = _mm_add_epi32(v0123, v5674);
+
+    // xor
+    v15121314 = _mm_xor_si128(v15121314, v0123);
+
+    // ror16
+    v15121314 = _mm_ror_epi32(v15121314, 16);
+
+    // add
+    v101189 = _mm_add_epi32(v101189, v15121314);
+
+    // xor
+    v5674 = _mm_xor_si128(v5674, v101189);
+
+    // ror12
+    v5674 = _mm_ror_epi32(v5674, 12);
+
+    // add
+    v0123 = _mm_add_epi32(v0123, ms9111315);
+
+    // add
+    v0123 = _mm_add_epi32(v0123, v5674);
+
+    // xor
+    v15121314 = _mm_xor_si128(v15121314, v0123);
+
+    // ror8
+    v15121314 = _mm_ror_epi32(v15121314, 8);
+
+    // add
+    v101189 = _mm_add_epi32(v101189, v15121314);
+
+    // xor
+    v5674 = _mm_xor_si128(v5674, v101189);
+
+    // ror7
+    v5674 = _mm_ror_epi32(v5674, 7);
+
+    // Store results back
+
+    _mm_storeu_si128(v[..4].as_mut_ptr() as *mut _, v0123);
+
+    let v4567 = _mm_shuffle_epi32(v5674, 0b0010_0001_0000_0011);
+    _mm_storeu_si128(v[4..8].as_mut_ptr() as *mut _, v4567);
+
+    let v891011 = _mm_shuffle_epi32(v101189, 0b0001_0000_0011_0010);
+    _mm_storeu_si128(v[8..12].as_mut_ptr() as *mut _, v891011);
+
+    let v12131415 = _mm_shuffle_epi32(v15121314, 0b0000_0011_0010_0001);
+    _mm_storeu_si128(v[12..].as_mut_ptr() as *mut _, v12131415);
 }
 
 // NOTE: Writing out the whole round explicitly in this way gives better

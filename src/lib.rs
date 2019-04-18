@@ -11,6 +11,7 @@ extern crate arrayvec;
 extern crate byteorder;
 extern crate constant_time_eq;
 extern crate core_arch;
+extern crate packed_simd;
 
 use byteorder::{ByteOrder, LittleEndian};
 use core::cmp;
@@ -1081,6 +1082,8 @@ pub mod benchmarks {
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     pub use crate::avx2::compress8_vectorized as compress8_vectorized_avx2;
 
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub use crate::avx512::compress as compress_avx512;
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     pub use crate::avx512::compress16_transposed_all as compress16_transposed_all_avx512;
 
