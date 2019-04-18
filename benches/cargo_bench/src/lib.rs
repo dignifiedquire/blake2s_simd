@@ -182,23 +182,6 @@ fn bench_blake2s_avx512_compress16_transposed_all(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_blake2s_avx512_compress(b: &mut Bencher) {
-    if !is_x86_feature_detected!("avx512f") {
-        return;
-    }
-
-    b.bytes = BLOCK.len() as u64;
-    unsafe {
-        let mut h = [0; 8];
-
-        b.iter(|| {
-            benchmarks::compress_avx512(&mut h, BLOCK, 0, 0, 0);
-            test::black_box(&mut h);
-        });
-    }
-}
-
-#[bench]
 fn bench_blake2s_portable_compress(b: &mut Bencher) {
     b.bytes = BLOCK.len() as u64;
     let mut h = [0; 8];

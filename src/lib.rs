@@ -1081,9 +1081,6 @@ pub mod benchmarks {
     pub use crate::avx2::compress8_transposed_all as compress8_transposed_all_avx2;
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     pub use crate::avx2::compress8_vectorized as compress8_vectorized_avx2;
-
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    pub use crate::avx512::compress as compress_avx512;
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     pub use crate::avx512::compress16_transposed_all as compress16_transposed_all_avx512;
 
