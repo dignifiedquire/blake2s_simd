@@ -1,7 +1,7 @@
 #[cfg(target_arch = "x86")]
-use core::arch::x86::*;
+use core_arch::x86::*;
 #[cfg(target_arch = "x86_64")]
-use core::arch::x86_64::*;
+use core_arch::x86_64::*;
 
 use crate::{Block, Hash, Params, StateWords, BLOCKBYTES, IV, OUTBYTES, SIGMA};
 
@@ -46,29 +46,54 @@ unsafe fn add(a: __m128i, b: __m128i) -> __m128i {
 }
 
 #[inline(always)]
+#[cfg(not(target_feature = "avx512f"))]
 unsafe fn rot7(a: __m128i) -> __m128i {
     xor(_mm_srli_epi32(a, 7), _mm_slli_epi32(a, 32 - 7))
 }
+#[inline(always)]
+#[cfg(target_feature = "avx512f")]
+unsafe fn rot7(a: __m128i) -> __m128i {
+    _mm_ror_epi32(a, 7)
+}
 
 #[inline(always)]
+#[cfg(not(target_feature = "avx512f"))]
 unsafe fn rot8(a: __m128i) -> __m128i {
     _mm_shuffle_epi8(
         a,
         _mm_set_epi8(12, 15, 14, 13, 8, 11, 10, 9, 4, 7, 6, 5, 0, 3, 2, 1),
     )
 }
-
 #[inline(always)]
-unsafe fn rot12(a: __m128i) -> __m128i {
-    xor(_mm_srli_epi32(a, 12), _mm_slli_epi32(a, 32 - 12))
+#[cfg(target_feature = "avx512f")]
+unsafe fn rot8(a: __m128i) -> __m128i {
+    _mm_ror_epi32(a, 8)
 }
 
 #[inline(always)]
+#[cfg(not(target_feature = "avx512f"))]
+unsafe fn rot12(a: __m128i) -> __m128i {
+    xor(_mm_srli_epi32(a, 12), _mm_slli_epi32(a, 32 - 12))
+}
+#[inline(always)]
+#[cfg(target_feature = "avx512f")]
+unsafe fn rot12(a: __m128i) -> __m128i {
+    _mm_ror_epi32(a, 12)
+}
+
+#[inline(always)]
+#[cfg(not(target_feature = "avx512f"))]
 unsafe fn rot16(a: __m128i) -> __m128i {
     _mm_shuffle_epi8(
         a,
         _mm_set_epi8(13, 12, 15, 14, 9, 8, 11, 10, 5, 4, 7, 6, 1, 0, 3, 2),
     )
+}
+
+#[inline(always)]
+#[cfg(target_feature = "avx512f")]
+unsafe fn rot16(a: __m128i) -> __m128i {
+    _mm_ror_epi32(a, 16)
 }
 
 #[inline(always)]
