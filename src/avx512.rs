@@ -157,40 +157,41 @@ pub unsafe fn compress(h: &mut StateWords, msg: &Block, count: u64, lastblock: u
         LittleEndian::read_u32(msg_refs.15),
     ];
 
-    let v_old = v.clone();
-    round(0, &m, &mut v);
-    round(1, &m, &mut v);
-    round(2, &m, &mut v);
-    round(3, &m, &mut v);
-    round(4, &m, &mut v);
-    round(5, &m, &mut v);
-    round(6, &m, &mut v);
-    round(7, &m, &mut v);
-    round(8, &m, &mut v);
-    round(9, &m, &mut v);
-
-    assert_ne!(v_old, v);
-
-    h[0] ^= v[0] ^ v[8];
-    h[1] ^= v[1] ^ v[9];
-    h[2] ^= v[2] ^ v[10];
-    h[3] ^= v[3] ^ v[11];
-    h[4] ^= v[4] ^ v[12];
-    h[5] ^= v[5] ^ v[13];
-    h[6] ^= v[6] ^ v[14];
-    h[7] ^= v[7] ^ v[15];
-}
-
-// Single blake2s round
-#[inline(always)]
-unsafe fn round(r: usize, m: &[u32; 16], v: &mut [u32; 16]) {
-    // this can replace round in portable.rs
-    // Idea, use mm128i to do 4 operations at a time
-
     let mut v0123 = loadu128(v[0], v[1], v[2], v[3]);
     let mut v4567 = loadu128(v[4], v[5], v[6], v[7]);
     let mut v891011 = loadu128(v[8], v[9], v[10], v[11]);
     let mut v12131415 = loadu128(v[12], v[13], v[14], v[15]);
+
+    round(0, &m, &mut v0123, &mut v4567, &mut v891011, &mut v12131415);
+    round(1, &m, &mut v0123, &mut v4567, &mut v891011, &mut v12131415);
+    round(2, &m, &mut v0123, &mut v4567, &mut v891011, &mut v12131415);
+    round(3, &m, &mut v0123, &mut v4567, &mut v891011, &mut v12131415);
+    round(4, &m, &mut v0123, &mut v4567, &mut v891011, &mut v12131415);
+    round(5, &m, &mut v0123, &mut v4567, &mut v891011, &mut v12131415);
+    round(6, &m, &mut v0123, &mut v4567, &mut v891011, &mut v12131415);
+    round(7, &m, &mut v0123, &mut v4567, &mut v891011, &mut v12131415);
+    round(8, &m, &mut v0123, &mut v4567, &mut v891011, &mut v12131415);
+    round(9, &m, &mut v0123, &mut v4567, &mut v891011, &mut v12131415);
+
+    let h0123 = _mm_xor_si128(v0123, v891011);
+    let h4567 = _mm_xor_si128(v4567, v12131415);
+
+    _mm_storeu_si128(h[..4].as_mut_ptr() as *mut _, h0123);
+    _mm_storeu_si128(h[4..].as_mut_ptr() as *mut _, h4567);
+}
+
+// Single blake2s round
+#[inline(always)]
+unsafe fn round(
+    r: usize,
+    m: &[u32; 16],
+    v0123: &mut __m128i,
+    v4567: &mut __m128i,
+    v891011: &mut __m128i,
+    v12131415: &mut __m128i,
+) {
+    // this can replace round in portable.rs
+    // Idea, use mm128i to do 4 operations at a time
 
     let ms0246 = loadu128(
         m[SIGMA[r][0] as usize],
@@ -220,61 +221,61 @@ unsafe fn round(r: usize, m: &[u32; 16], v: &mut [u32; 16]) {
     // Mix columns
 
     // add
-    v0123 = _mm_add_epi32(v0123, ms0246);
+    *v0123 = _mm_add_epi32(*v0123, ms0246);
 
     // add
-    v0123 = _mm_add_epi32(v0123, v4567);
+    *v0123 = _mm_add_epi32(*v0123, *v4567);
 
     // xor
-    v12131415 = _mm_xor_si128(v12131415, v0123);
+    *v12131415 = _mm_xor_si128(*v12131415, *v0123);
 
     // ror16
-    v12131415 = _mm_ror_epi32(v12131415, 16);
+    *v12131415 = _mm_ror_epi32(*v12131415, 16);
 
     // add
-    v891011 = _mm_add_epi32(v891011, v12131415);
+    *v891011 = _mm_add_epi32(*v891011, *v12131415);
 
     // add
-    v4567 = _mm_xor_si128(v4567, v891011);
+    *v4567 = _mm_xor_si128(*v4567, *v891011);
 
     // ror12
-    v4567 = _mm_ror_epi32(v4567, 12);
+    *v4567 = _mm_ror_epi32(*v4567, 12);
 
     // add
-    v0123 = _mm_add_epi32(v0123, ms1357);
+    *v0123 = _mm_add_epi32(*v0123, ms1357);
 
     // add
-    v0123 = _mm_add_epi32(v0123, v4567);
+    *v0123 = _mm_add_epi32(*v0123, *v4567);
 
     // xor
-    v12131415 = _mm_xor_si128(v12131415, v0123);
+    *v12131415 = _mm_xor_si128(*v12131415, *v0123);
 
     // ror8
-    v12131415 = _mm_ror_epi32(v12131415, 8);
+    *v12131415 = _mm_ror_epi32(*v12131415, 8);
 
     // add
-    v891011 = _mm_add_epi32(v891011, v12131415);
+    *v891011 = _mm_add_epi32(*v891011, *v12131415);
 
     // xor
-    v4567 = _mm_xor_si128(v4567, v891011);
+    *v4567 = _mm_xor_si128(*v4567, *v891011);
 
     // ror7
-    v4567 = _mm_ror_epi32(v4567, 7);
+    *v4567 = _mm_ror_epi32(*v4567, 7);
 
     // Mix rows
     // FIXME: correct shuffle masks
-    let mut v5674 = _mm_shuffle_epi32(v4567, 0b0010_0001_0000_0011);
-    let mut v15121314 = _mm_shuffle_epi32(v12131415, 0b0010_0001_0000_0011);
-    let mut v101189 = _mm_shuffle_epi32(v891011, 0b0010_0001_0000_0011);
+    let mut v5674 = _mm_shuffle_epi32(*v4567, 0b0010_0001_0000_0011);
+    let mut v15121314 = _mm_shuffle_epi32(*v12131415, 0b0010_0001_0000_0011);
+    let mut v101189 = _mm_shuffle_epi32(*v891011, 0b0010_0001_0000_0011);
 
     // add
-    v0123 = _mm_add_epi32(v0123, ms8101214);
+    *v0123 = _mm_add_epi32(*v0123, ms8101214);
 
     // add
-    v0123 = _mm_add_epi32(v0123, v5674);
+    *v0123 = _mm_add_epi32(*v0123, v5674);
 
     // xor
-    v15121314 = _mm_xor_si128(v15121314, v0123);
+    v15121314 = _mm_xor_si128(v15121314, *v0123);
 
     // ror16
     v15121314 = _mm_ror_epi32(v15121314, 16);
@@ -289,13 +290,13 @@ unsafe fn round(r: usize, m: &[u32; 16], v: &mut [u32; 16]) {
     v5674 = _mm_ror_epi32(v5674, 12);
 
     // add
-    v0123 = _mm_add_epi32(v0123, ms9111315);
+    *v0123 = _mm_add_epi32(*v0123, ms9111315);
 
     // add
-    v0123 = _mm_add_epi32(v0123, v5674);
+    *v0123 = _mm_add_epi32(*v0123, v5674);
 
     // xor
-    v15121314 = _mm_xor_si128(v15121314, v0123);
+    v15121314 = _mm_xor_si128(v15121314, *v0123);
 
     // ror8
     v15121314 = _mm_ror_epi32(v15121314, 8);
@@ -309,18 +310,10 @@ unsafe fn round(r: usize, m: &[u32; 16], v: &mut [u32; 16]) {
     // ror7
     v5674 = _mm_ror_epi32(v5674, 7);
 
-    // Store results back
-
-    _mm_storeu_si128(v[..4].as_mut_ptr() as *mut _, v0123);
-
-    let v4567 = _mm_shuffle_epi32(v5674, 0b0010_0001_0000_0011);
-    _mm_storeu_si128(v[4..8].as_mut_ptr() as *mut _, v4567);
-
-    let v891011 = _mm_shuffle_epi32(v101189, 0b0001_0000_0011_0010);
-    _mm_storeu_si128(v[8..12].as_mut_ptr() as *mut _, v891011);
-
-    let v12131415 = _mm_shuffle_epi32(v15121314, 0b0000_0011_0010_0001);
-    _mm_storeu_si128(v[12..].as_mut_ptr() as *mut _, v12131415);
+    // Shuffle results back
+    *v4567 = _mm_shuffle_epi32(v5674, 0b0010_0001_0000_0011);
+    *v891011 = _mm_shuffle_epi32(v101189, 0b0001_0000_0011_0010);
+    *v12131415 = _mm_shuffle_epi32(v15121314, 0b0000_0011_0010_0001);
 }
 
 // NOTE: Writing out the whole round explicitly in this way gives better
